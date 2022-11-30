@@ -1,8 +1,11 @@
+import type * as webnative from 'webnative'
+
 import { appName } from '$lib/app-info'
 
 export type Session = {
   username: string
-  authed: boolean
+  session: webnative.Session | null
+  authStrategy: webnative.AuthenticationStrategy | null
   loading: boolean
   backupCreated: boolean
   error?: SessionError

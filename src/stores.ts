@@ -12,7 +12,8 @@ export const themeStore: Writable<Theme> = writable(loadTheme())
 
 export const sessionStore: Writable<Session> = writable({
   username: null,
-  authed: false,
+  session: null,
+  authStrategy: null,
   loading: true,
   backupCreated: null
 })

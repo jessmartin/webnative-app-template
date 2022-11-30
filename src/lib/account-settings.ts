@@ -7,6 +7,7 @@ import type { Metadata } from 'webnative/fs/metadata'
 
 import { accountSettingsStore, filesystemStore } from '$src/stores'
 import { addNotification } from '$lib/notifications'
+import { fileToUint8Array } from './utils'
 
 export type Avatar = {
   cid: string
@@ -29,11 +30,11 @@ interface AvatarFile extends PuttableUnixTree, WNFile {
   }
 }
 
-export const ACCOUNT_SETTINGS_DIR = ['private', 'settings']
-const AVATAR_DIR = [...ACCOUNT_SETTINGS_DIR, 'avatars']
-const AVATAR_ARCHIVE_DIR = [...AVATAR_DIR, 'archive']
+export const ACCOUNT_SETTINGS_DIR = [ 'private', 'settings' ]
+const AVATAR_DIR = [ ...ACCOUNT_SETTINGS_DIR, 'avatars' ]
+const AVATAR_ARCHIVE_DIR = [ ...AVATAR_DIR, 'archive' ]
 const AVATAR_FILE_NAME = 'avatar'
-const FILE_SIZE_LIMIT = 5
+const FILE_SIZE_LIMIT = 20
 
 /**
  * Move old avatar to the archive directory
@@ -53,10 +54,9 @@ const archiveOldAvatar = async (): Promise<void> => {
   const oldAvatarFileName = Object.keys(links).find(key =>
     key.includes(AVATAR_FILE_NAME)
   )
-  const oldFileNameArray = oldAvatarFileName.split('.')[0]
-  const archiveFileName = `${oldFileNameArray[0]}-${Date.now()}.${
-    oldFileNameArray[1]
-  }`
+  const oldFileNameArray = oldAvatarFileName.split('.')[ 0 ]
+  const archiveFileName = `${oldFileNameArray[ 0 ]}-${Date.now()}.${oldFileNameArray[ 1 ]
+    }`
 
   // Move old avatar to archive dir
   const fromPath = wn.path.file(...AVATAR_DIR, oldAvatarFileName)
@@ -148,10 +148,10 @@ export const uploadAvatarToWNFS = async (image: File): Promise<void> => {
 
     const fs = getStore(filesystemStore)
 
-    // Reject files over 5MB
+    // Reject files over 20MB
     const imageSizeInMB = image.size / (1024 * 1024)
     if (imageSizeInMB > FILE_SIZE_LIMIT) {
-      throw new Error('Image can be no larger than 5MB')
+      throw new Error('Image can be no larger than 20MB')
     }
 
     // Archive old avatar
@@ -159,15 +159,18 @@ export const uploadAvatarToWNFS = async (image: File): Promise<void> => {
 
     // Rename the file to `avatar.[extension]`
     const updatedImage = new File(
-      [image],
-      `${AVATAR_FILE_NAME}.${image.name.split('.')[1]}`,
+      [ image ],
+      `${AVATAR_FILE_NAME}.${image.name.split('.')[ 1 ]}`,
       {
         type: image.type
       }
     )
 
     // Create a sub directory and add the avatar
-    await fs.write(wn.path.file(...AVATAR_DIR, updatedImage.name), updatedImage)
+    await fs.write(
+      wn.path.file(...AVATAR_DIR, updatedImage.name),
+      await fileToUint8Array(updatedImage)
+    )
 
     // Announce the changes to the server
     await fs.publish()

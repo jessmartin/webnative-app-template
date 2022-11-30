@@ -1,5 +1,6 @@
 import * as webnative from 'webnative'
 import type FileSystem from 'webnative/fs/index'
+import { get as getStore } from 'svelte/store'
 
 import { asyncDebounce } from '$lib/utils'
 import { filesystemStore, sessionStore } from '../../stores'
@@ -8,12 +9,21 @@ import { ACCOUNT_SETTINGS_DIR } from '$lib/account-settings'
 import { AREAS } from '$routes/gallery/stores'
 import { GALLERY_DIRS } from '$routes/gallery/lib/gallery'
 
+
 export const isUsernameValid = async (username: string): Promise<boolean> => {
-  return webnative.account.isUsernameValid(username)
+  const session = getStore(sessionStore)
+  return session.authStrategy.isUsernameValid(username)
+}
+
+const _isUsernameAvailable = async (
+  username: string
+) => {
+  const session = getStore(sessionStore)
+  return session.authStrategy.isUsernameAvailable(username)
 }
 
 const debouncedIsUsernameAvailable = asyncDebounce(
-  webnative.account.isUsernameAvailable,
+  _isUsernameAvailable,
   300
 )
 
@@ -24,20 +34,21 @@ export const isUsernameAvailable = async (
 }
 
 export const register = async (username: string): Promise<boolean> => {
-  const { success } = await webnative.account.register({ username })
+  const authStrategy = getStore(sessionStore).authStrategy
+  const { success } = await authStrategy.register({ username })
 
   if (!success) return success
 
-  const fs = await webnative.bootstrapRootFileSystem()
-  filesystemStore.set(fs)
+  const session = await authStrategy.session()
+  filesystemStore.set(session.fs)
 
   // TODO Remove if only public and private directories are needed
-  await initializeFilesystem(fs)
+  await initializeFilesystem(session.fs)
 
-  sessionStore.update(session => ({
-    ...session,
+  sessionStore.update(state => ({
+    ...state,
     username,
-    authed: true
+    session
   }))
 
   return success
@@ -49,48 +60,22 @@ export const register = async (username: string): Promise<boolean> => {
  * @param fs FileSystem
  */
 const initializeFilesystem = async (fs: FileSystem): Promise<void> => {
-  await fs.mkdir(webnative.path.directory(...GALLERY_DIRS[AREAS.PUBLIC]))
-  await fs.mkdir(webnative.path.directory(...GALLERY_DIRS[AREAS.PRIVATE]))
+  await fs.mkdir(webnative.path.directory(...GALLERY_DIRS[ AREAS.PUBLIC ]))
+  await fs.mkdir(webnative.path.directory(...GALLERY_DIRS[ AREAS.PRIVATE ]))
   await fs.mkdir(webnative.path.directory(...ACCOUNT_SETTINGS_DIR))
 }
 
 export const loadAccount = async (username: string): Promise<void> => {
-  await checkDataRoot(username)
+  const session = await getStore(sessionStore).authStrategy.session()
 
-  const fs = await webnative.loadRootFileSystem()
-  filesystemStore.set(fs)
+  filesystemStore.set(session.fs)
 
-  const backupStatus = await getBackupStatus(fs)
+  const backupStatus = await getBackupStatus(session.fs)
 
-  sessionStore.update(session => ({
-    ...session,
+  sessionStore.update(state => ({
+    ...state,
     username,
-    authed: true,
+    session,
     backupCreated: backupStatus.created
   }))
-}
-
-const checkDataRoot = async (username: string): Promise<void> => {
-  let dataRoot = await webnative.dataRoot.lookup(username)
-
-  if (dataRoot) return
-
-  return new Promise((resolve) => {
-    const maxRetries = 20
-    let attempt = 0
-
-    const dataRootInterval = setInterval(async () => {
-      console.warn('Could not fetch filesystem data root. Retrying.')
-
-      dataRoot = await webnative.dataRoot.lookup(username)
-
-      if (!dataRoot && attempt < maxRetries) {
-        attempt++
-        return
-      }
-
-      clearInterval(dataRootInterval)
-      resolve()
-    }, 500)
-  })
 }
